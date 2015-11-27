@@ -21,19 +21,26 @@ SENDER_INFO = {}
 def get_user_info(username=None):
     with open('smtp.conf','r') as f:
         users = pickle.load(f)
-    if not username:  
+
+    if not username:                   #use default user
         user,postfix = users['default'].split('@')
         password = users[users['default']]
-    elif username in users:
+    elif username in users:                                #use a  specific user
         user,postfix = username.split('@')
         password = users[username]
-    else :
+    else :                                   #can't find a user name called username
         return 
 
     SENDER_INFO['user'] = user
     SENDER_INFO['password'] = password
     SENDER_INFO['host'] = 'smtp' +  '.' + postfix
 
+#judge  any  wildcard in the seq
+def contain_anywildcard(seq, cset=('*', '?', '[', ']')):
+    for c in cset:
+        if c in seq:
+            return True
+    return False
 
 def email_files(sub, brief_msg, files, recipients ):
 
@@ -42,11 +49,16 @@ def email_files(sub, brief_msg, files, recipients ):
     mail_pass = SENDER_INFO['password']
     mail_postfix = mail_host[5:]
 
+
     zf = tempfile.NamedTemporaryFile(prefix='mail', suffix='.zip')      #create a templefie called mail*.zip, which would be deleted automatically when the process is stop.
     zip = zipfile.ZipFile(zf, 'w')
     print "Zipping the files to be sent..."
     for file_name in  files:
-        zip.write(file_name)
+        if contain_anywildcard(file_name):                      #check if file_name have any wildcard 
+            for eachfile in glob.glob(file_name):
+                zip.write(eachfile)
+        else :
+            zip.write(file_name)
     zip.close()
     zf.seek(0)
 
