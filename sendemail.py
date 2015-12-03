@@ -2,6 +2,7 @@
 # _*_ coding: utf8 _*_
 
 import re
+import glob
 from datetime import datetime
 import pickle
 import os
@@ -150,7 +151,10 @@ def is_nickname_exits(nick_name):
 	cursor = conn.cursor()
 	search_sql = "SELECT EMAIL_ADDRESS FROM NICK_EMAIL WHERE NICK_NAME = ?"
 	cursor.execute(search_sql,(nick_name,))
-	result =  cursor.fetchone()[0]
+	try:
+		result = cursor.fetchone()[0]
+	except TypeError:          
+		result = None
 	cursor.close()
 	conn.close()
 	return result
@@ -222,12 +226,3 @@ if __name__ == '__main__':
 				save_recipent(args.nick, args.rec[0])
 	else :
 		print 'wrong usage!!!'
-
-
-	
-
-
-
-
-
-
