@@ -26,7 +26,6 @@ SENDER_INFO = {}
 LOGFILE = '/home/garrick/email.log'
 
 
-
 def validateEmail(email):
     if len(email) > 7:
         if re.match("^.+\\@(\\[?)[a-zA-Z0-9\\-\\.]+\\.([a-zA-Z]{2,3}|[0-9]{1,3})(\\]?)$", email) != None:
@@ -34,7 +33,7 @@ def validateEmail(email):
     return 0
 
 
-
+#change the  nickname, if have, to the real email address according to the database. 
 def get_real_address(recipients):
 	for idx, value in enumerate(recipients):
 		if not validateEmail(value):
@@ -45,7 +44,7 @@ def get_real_address(recipients):
 				raise ValueError
 
 
-
+#setup the SENDER_INFO(user,password,host)
 def get_user_info(username=None):
 	with open('/home/garrick/python/smtp.conf','r') as f:
 		users = pickle.load(f)
@@ -64,56 +63,75 @@ def get_user_info(username=None):
 	SENDER_INFO['host'] = 'smtp' +  '.' + postfix
 
 
-#judge  any  wildcard in the seq
-def contain_anywildcard(seq, cset=('*', '?')):
-	for c in cset:
-		if c in seq:
-			return True
-	return False
+# #judge  any  wildcard in the seq, btw, it only support '*' and '?'.
+# def contain_anywildcard(seq, cset=('*', '?')):
+# 	for c in cset:
+# 		if c in seq:
+# 			return True
+# 	return False
 
+
+#zip the files and return the zipped files called 'documents.zip'.
+def zip_files(files):
+	zf = tempfile.NamedTemporaryFile(prefix='mail', suffix='.zip')      #create a templefie called mail*.zip, which would be deleted automatically when the process stop.
+	zip = zipfile.ZipFile(zf, 'w',zipfile.ZIP_DEFLATED )
+	print "Zipping the files to be sent..."
+
+	for file_name in  files:        
+		filepath, file_name = os.path.split(file_name)
+		curpath = os.getcwd()
+		if filepath:
+			os.chdir(filepath);
+		if not os.path.exists(file_name):               
+			print file_name + ' do not exist.'
+			exit();             #the file do not exist, abort.
+
+		  #zip the directory and remain its directory structure.	
+		if os.path.isdir(file_name):                                
+			for root, dirs, allfiles in os.walk(file_name):
+				for eachfile in allfiles:
+					zip.write(os.path.join(root,eachfile))
+		#zip regular file 			
+		for eachfile in glob.glob(file_name):    
+			zip.write(eachfile)
+
+		os.chdir(curpath)
+
+	zip.close()
+	zf.seek(0)
+	return zf
+
+
+#send the mail.
 def email_files(sub, brief_msg, files, recipients ):
-	"""
-	zip the file and send email
-	"""
 
 	mail_user = SENDER_INFO['user']
 	mail_host = SENDER_INFO['host']
 	mail_pass = SENDER_INFO['password']
 	mail_postfix = mail_host[5:]
 
-
-	zf = tempfile.NamedTemporaryFile(prefix='mail', suffix='.zip')      #create a templefie called mail*.zip, which would be deleted automatically when the process stop.
-	zip = zipfile.ZipFile(zf, 'w',zipfile.ZIP_DEFLATED )
-	print "Zipping the files to be sent..."
-	for file_name in  files:
-		if os.path.isdir(file_name):                                
-			for root, dirs, allfiles in os.walk(file_name):
-				for eachfile in allfiles:
-					zip.write(os.path.join(root,eachfile))
-
-		if contain_anywildcard(file_name):                      #check if file_name have any wildcard 
-			for eachfile in glob.glob(file_name):
-				zip.write(eachfile)
-		else :
-			zip.write(file_name)
-	zip.close()
-	zf.seek(0)
-
 	print "Creating email message..."
 	me="garrick"+"<"+mail_user+"@"+mail_postfix+">"   
+	
+
 	msg = MIMEMultipart() 
 	msg['Subject'] = sub  
 	msg['From'] = me
-	msg['To'] = ";".join(recipients) 
+	msg['To'] = ";".join(recipients)    
 
-	test_message  = MIMEText(brief_msg, 'plain', 'utf-8')
-	att = MIMEBase('application', 'zip')
-	att.set_payload(zf.read())
-	att.add_header('Content-Disposition', 'attachment', filename=Header('documents.zip','utf8').encode())
-	encoders.encode_base64(att)
+	if brief_msg: 
+		test_message  = MIMEText(brief_msg, 'plain', 'utf-8')  
+		msg.attach(test_message)
 
-	msg.attach(att)
-	msg.attach(test_message)
+	#if had any attachment. 
+	if files:
+		zf = zip_files(files)
+		att = MIMEBase('application', 'zip')
+		att.set_payload(zf.read())
+		att.add_header('Content-Disposition', 'attachment', filename=Header('documents.zip','utf8').encode())
+		encoders.encode_base64(att)
+		msg.attach(att)
+
 	msg = msg.as_string()
 
 	print "Sending email message...."
@@ -127,6 +145,7 @@ def email_files(sub, brief_msg, files, recipients ):
 		raise SystemError
 	finally:
 		smtp.close()
+
 
 
 def init_recipients_db():
@@ -194,8 +213,9 @@ def save_recipent(nick_name, email_address):
 	cursor.close()
 	conn.close()
 
-if __name__ == '__main__':
-	
+
+
+if __name__ == '__main__':	
 	parser = argparse.ArgumentParser(description='Email Example')
 	parser.add_argument('-r','--rec', action='store', dest='rec', nargs='+')     # rec is a list , mutirecipient
 	parser.add_argument('--sub', action='store', dest='sub')     #subtile 
@@ -214,7 +234,7 @@ if __name__ == '__main__':
 			get_real_address(args.rec)
 			email_files(args.sub, args.msg, args.files, args.rec)
 		except ValueError,e:
-			print "Invalid recipients!",e
+			print "Invalid recipients or Invalid contents!",e
 		except SystemError,e:
 			print "Send email failed. ",e
 		else :
