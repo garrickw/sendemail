@@ -18,6 +18,7 @@ from email import encoders
 from email.mime.text import MIMEText 
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 
 
@@ -103,7 +104,7 @@ def zip_files(files):
 
 
 #send the mail.
-def email_files(sub, brief_msg, files, recipients ):
+def email_files(sub, brief_msg, files, recipients, iszip, zipfilename):
 
 	mail_user = SENDER_INFO['user']
 	mail_host = SENDER_INFO['host']
@@ -125,16 +126,29 @@ def email_files(sub, brief_msg, files, recipients ):
 
 	#if had any attachment. 
 	if files:
-		zf = zip_files(files)
-		att = MIMEBase('application', 'zip')
-		att.set_payload(zf.read())
-		att.add_header('Content-Disposition', 'attachment', filename=Header('documents.zip','utf8').encode())
-		encoders.encode_base64(att)
-		msg.attach(att)
+		#do zip
+		if iszip:
+			zf = zip_files(files)
+			att = MIMEBase('application', 'zip')
+			att.set_payload(zf.read())
+			zipfilename = zipfilename or 'documents'
+			att.add_header('Content-Disposition', 'attachment', filename=Header(zipfilename+'.zip','utf8').encode())
+			encoders.encode_base64(att)
+			msg.attach(att)
+
+		#do not zip
+		else :
+			for eachfile in files:
+				with open(eachfile,'rb') as f:
+					att = MIMEBase('application', os.path.splitext(eachfile)[-1])
+					att.set_payload(f.read())
+				att.add_header('Content-Disposition', 'attachment', filename=Header(os.path.basename(eachfile),'utf8').encode())
+				encoders.encode_base64(att)
+				msg.attach(att)
 
 	msg = msg.as_string()
 
-	print "Sending email message...."
+	print "Sending email message...."   
 	try:
 		smtp = smtplib.SMTP(mail_host)
 		# smtp.set_debuglevel(1)
@@ -216,13 +230,15 @@ def save_recipent(nick_name, email_address):
 
 
 if __name__ == '__main__':	
-	parser = argparse.ArgumentParser(description='Email Example')
+	parser = argparse.ArgumentParser(prog="email")
 	parser.add_argument('-r','--rec', action='store', dest='rec', nargs='+')     # rec is a list , mutirecipient
 	parser.add_argument('--sub', action='store', dest='sub')     #subtile 
 	parser.add_argument('-u', '--user',action='store', dest='user')
 	parser.add_argument('-f', '--file', action='store',dest='files', nargs='+')
 	parser.add_argument('-m', '--message', action='store', dest='msg')
 	parser.add_argument('-save', action='store', dest='nick')
+	parser.add_argument('-z', '--zip', action='store_true')
+	parser.add_argument('--zipname',action='store', dest='zipfilename')
 	args = parser.parse_args()
 
 	#get the user information and set SENDER_INFO
@@ -232,7 +248,7 @@ if __name__ == '__main__':
 	if SENDER_INFO and args.rec and ( args.msg or args.files) :      
 		try:
 			get_real_address(args.rec)
-			email_files(args.sub, args.msg, args.files, args.rec)
+			email_files(args.sub, args.msg, args.files, args.rec, args.zip, args.zipfilename)
 		except ValueError,e:
 			print "Invalid recipients or Invalid contents!",e
 		except SystemError,e:
@@ -245,4 +261,4 @@ if __name__ == '__main__':
 			if  args.nick:           
 				save_recipent(args.nick, args.rec[0])
 	else :
-		print 'wrong usage!!!'
+		parser.print_help();
